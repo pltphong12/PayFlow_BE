@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>PayFlow Development Roadmap</title>
+<style>
+body{font-family:Arial,sans-serif;max-width:1100px;margin:40px auto;line-height:1.6;background:#f5f5f5;color:#222}
+h1,h2{color:#0b5394}
+.phase{background:#fff;border-left:6px solid #0b5394;padding:16px 20px;margin:18px 0;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+ul{margin-top:6px}
+table{border-collapse:collapse;width:100%;background:#fff}
+th,td{border:1px solid #ccc;padding:10px}
+th{background:#e8f1fb}
+code{background:#eee;padding:2px 4px;border-radius:4px}
+</style>
+</head>
+<body>
+<h1>PayFlow - Development Roadmap</h1>
+<p>Nguyên tắc: Mỗi phase đều chạy được, demo được và xây dựng trên phase trước.</p>
+
+<div class="phase"><h2>Phase 0 - Infrastructure</h2>
+<ul><li>Docker Compose</li><li>PostgreSQL</li><li>Kafka + Kafka UI</li><li>Redis</li><li>Spring Cloud Gateway</li><li>CI cơ bản</li></ul>
+<b>Demo:</b> docker compose up → toàn bộ hạ tầng hoạt động.
+</div>
+
+<div class="phase"><h2>Phase 1 - Authentication</h2>
+<ul><li>User Service</li><li>Register/Login</li><li>JWT + Refresh Token</li><li>Role USER/ADMIN</li><li>React Login/Register</li></ul>
+</div>
+
+<div class="phase"><h2>Phase 2 - Wallet</h2>
+<ul><li>Wallet Service</li><li>Tạo ví</li><li>Xem số dư</li><li>Ledger là bảng trong Wallet</li><li>Dashboard hiển thị Balance</li></ul>
+</div>
+
+<div class="phase"><h2>Phase 3 - Top-up</h2>
+<ul>
+<li>Payment Gateway Fake</li>
+<li>Kafka Event-driven</li>
+<li>Notification Service</li>
+<li>Outbox Pattern</li>
+<li>Idempotency Key</li>
+<li>Retry publish Kafka</li>
+<li>DLQ Notification</li>
+<li>Audit Top-up</li>
+</ul>
+</div>
+
+<div class="phase"><h2>Phase 4 ⭐ - Transfer Money</h2>
+<ul>
+<li>Transaction Service</li>
+<li>Saga Pattern</li>
+<li>Optimistic Lock</li>
+<li>Rollback</li>
+<li>Ledger</li>
+<li>OpenTelemetry + Zipkin</li>
+<li>Prometheus Metrics</li>
+</ul>
+</div>
+
+<div class="phase"><h2>Phase 5 - Merchant</h2>
+<ul>
+<li>Merchant Registration</li>
+<li>Merchant Approval</li>
+<li>Merchant Dashboard</li>
+<li>Role-based Authorization</li>
+</ul>
+</div>
+
+<div class="phase"><h2>Phase 6 ⭐⭐⭐ - QR Payment</h2>
+<ul>
+<li>Generate QR</li>
+<li>Scan QR</li>
+<li>Payment cho Merchant</li>
+<li>Tái sử dụng Saga</li>
+<li>Circuit Breaker</li>
+</ul>
+</div>
+
+<div class="phase"><h2>Phase 7 - Real-time</h2>
+<ul>
+<li>SSE</li>
+<li>Merchant Dashboard Realtime</li>
+<li>Prometheus</li>
+<li>Grafana</li>
+</ul>
+</div>
+
+<div class="phase"><h2>Phase 8 - Refactor</h2>
+<ul>
+<li>Tách Ledger thành Ledger Service</li>
+<li>Chuẩn bị Audit, Reporting, Reconciliation</li>
+</ul>
+</div>
+
+<div class="phase"><h2>Phase 9 - Settlement</h2>
+<ul>
+<li>Settlement Service</li>
+<li>Merchant Withdraw</li>
+<li>Batch Settlement</li>
+<li>Retry + Circuit Breaker</li>
+</ul>
+</div>
+
+<div class="phase"><h2>Phase 10 - Hardening</h2>
+<ul>
+<li>OAuth2 / Spring Authorization Server hoặc Keycloak</li>
+<li>Rate Limiting</li>
+<li>Audit</li>
+<li>Alert Rule</li>
+<li>Integration Test (Testcontainers)</li>
+<li>Load Test (k6/JMeter)</li>
+</ul>
+</div>
+
+<h2>Tổng quan</h2>
+<table>
+<tr><th>Phase</th><th>Mục tiêu</th><th>Điểm kỹ thuật</th></tr>
+<tr><td>0</td><td>Infrastructure</td><td>Docker, Kafka, Redis, Gateway</td></tr>
+<tr><td>1</td><td>Authentication</td><td>JWT</td></tr>
+<tr><td>2</td><td>Wallet</td><td>Wallet Service</td></tr>
+<tr><td>3</td><td>Top-up</td><td>Kafka, Outbox, Idempotency, DLQ</td></tr>
+<tr><td>4</td><td>Transfer</td><td>Saga, Optimistic Lock, Tracing</td></tr>
+<tr><td>5</td><td>Merchant</td><td>RBAC</td></tr>
+<tr><td>6</td><td>QR Payment</td><td>Circuit Breaker</td></tr>
+<tr><td>7</td><td>Realtime</td><td>SSE, Prometheus, Grafana</td></tr>
+<tr><td>8</td><td>Refactor</td><td>Ledger Service</td></tr>
+<tr><td>9</td><td>Settlement</td><td>Retry</td></tr>
+<tr><td>10</td><td>Hardening</td><td>OAuth2, Audit, Testing</td></tr>
+</table>
+</body></html>
