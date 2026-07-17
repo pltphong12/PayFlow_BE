@@ -44,10 +44,7 @@ services:
     environment:
       - KAFKA_CLUSTERS_0_NAME=local
       - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:29092
-      # Bổ sung 2 dòng dưới để tự động kết nối lại khi Kafka khởi động chậm
-      - KAFKA_CLUSTERS_0_READONLY=false
-    depends_on:
-      - kafka
+
   redis:
     image: redis:8-alpine
     container_name: payflow-redis
