@@ -34,3 +34,12 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### Environment variables (secrets) ###
+.env
+**/.env
+!.env.example
+!**/.env.example
+
+### Local configuration files ###
+**/application-local.yml

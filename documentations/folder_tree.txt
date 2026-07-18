@@ -1,0 +1,42 @@
+payflow-backend/
+├── pom.xml
+├── README.md
+├── .gitignore
+├── .github/workflows/ci.yml
+├── docs/
+│   ├── brd/BRD_PayFlow.html
+│   └── phase/PayFlow_Roadmap.html
+├── infrastructure/
+│   └── docker-compose.yml
+├── common/
+│   └── src/main/java/com/payflow/common/{dto,exception,jwt,event,util}
+├── services/
+    ├── api-gateway/               (Phase 0)
+    ├── user-service/              (Phase 1)
+    ├── wallet-service/            (Phase 2)
+    ├── payment-gateway-fake-service/ (Phase 3)
+    ├── transaction-service/       (Phase 4 Saga)
+    ├── merchant-service/          (Phase 6)
+    ├── qr-payment-service/        (Phase 7)
+    ├── notification-service/      (Phase 3/8 — SSE)
+    ├── ledger-service/            (Phase 9)
+    └── settlement-service/        (Phase 10)
+
+Mỗi service
+services/{name}/
+├── pom.xml
+├── Dockerfile
+├── src/main/java/com/payflow/{name}/
+│   ├── {Name}Application.java
+│   ├── config/
+│   ├── controller/
+│   ├── service/
+│   ├── repository/
+│   ├── entity/
+│   ├── kafka/{producer,consumer}
+│   └── dto/
+├── src/main/resources/
+│   ├── application.yml
+│   ├── application-docker.yml
+│   └── db/migration/  (Flyway V1__..., V2__...)
+└── src/test/java/com/payflow/{name}/

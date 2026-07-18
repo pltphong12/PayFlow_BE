@@ -1,0 +1,10 @@
+# Giá trị khi chạy trong docker-compose.
+# POSTGRES_USER, POSTGRES_PASSWORD, JWT_SECRET lấy từ env_file (infrastructure/.env).
+
+POSTGRES_HOST: postgres
+POSTGRES_PORT: 5432
+POSTGRES_DB: payflow_user_db
+
+KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+
+management.endpoint.health.show-details: always
