@@ -20,7 +20,7 @@
         <!-- Spring Cloud Gateway -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-gateway</artifactId>
+            <artifactId>spring-cloud-starter-gateway-server-webflux</artifactId>
         </dependency>
 
         <!-- Actuator để kiểm tra health check endpoint theo tiêu chí Demo của Phase 0 -->
@@ -36,4 +36,22 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
+    <build>
+        <plugins>
+            <!-- Bắt buộc phải có plugin này thì `mvn package` mới đóng gói ra
+                 executable fat jar (có Main-Class trong MANIFEST.MF).
+                 Thiếu plugin này sẽ gặp lỗi "no main manifest attribute" khi chạy java -jar. -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>

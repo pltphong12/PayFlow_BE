@@ -1,0 +1,13 @@
+# Profile dùng khi api-gateway chạy bên trong docker-compose (Phase 0).
+# Kích hoạt bằng biến môi trường SPRING_PROFILES_ACTIVE=docker (đã khai báo trong docker-compose.yml).
+# Ở Phase 0 chưa có service business nào để route tới, nên phần dưới chỉ là
+# placeholder minh hoạ việc gọi nhau qua hostname nội bộ Docker (VD: wallet-service:8081)
+# như roadmap yêu cầu, sẽ được bổ sung route thật khi các service đó ra đời.
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+management.endpoint.health.show-details: always
