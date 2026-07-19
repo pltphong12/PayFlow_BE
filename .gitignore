@@ -43,3 +43,6 @@ build/
 
 ### Local configuration files ###
 **/application-local.yml
+
+### Cursor ###
+.cursor/
