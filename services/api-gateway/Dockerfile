@@ -5,13 +5,13 @@
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /workspace
 
-# Copy toàn bộ reactor (root pom + các module) để Maven resolve đúng dependency giữa các module
+# Copy reactor: parent pom cần thấy đủ module con, dù chỉ build một service
 COPY pom.xml .
 COPY common ./common
 COPY services/api-gateway ./services/api-gateway
+COPY services/user-service/pom.xml ./services/user-service/pom.xml
 
-# Build riêng module api-gateway kèm theo module common mà nó phụ thuộc (-am),
-# bỏ qua test để build image nhanh hơn (test đã chạy ở bước CI riêng)
+# Build riêng module api-gateway kèm theo module common mà nó phụ thuộc (-am), bỏ qua test để build image nhanh hơn (test đã chạy ở bước CI riêng)
 RUN mvn -q -pl services/api-gateway -am -DskipTests package
 
 # ===== Stage 2: Runtime =====
@@ -19,7 +19,8 @@ FROM eclipse-temurin:21-jre-alpine AS runtime
 WORKDIR /app
 
 # Chạy bằng user thường, không dùng root, cho chuẩn bảo mật
-RUN addgroup -S payflow && adduser -S payflow -G payflow
+RUN addgroup -S payflow && adduser -S payflow -G payflow \
+    && apk add --no-cache wget
 USER payflow
 
 COPY --from=build /workspace/services/api-gateway/target/*.jar app.jar

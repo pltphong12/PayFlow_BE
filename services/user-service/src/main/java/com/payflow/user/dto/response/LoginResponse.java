@@ -1,4 +1,4 @@
-package com.payflow.user.dto;
+package com.payflow.user.dto.response;
 
 import lombok.Builder;
 import lombok.Getter;
@@ -8,5 +8,7 @@ import lombok.Getter;
 public class LoginResponse {
     private String accessToken;
     private String tokenType;
-    private long expiresIn; 
+    private long expiresIn;
+    private String refreshToken;
+    private long refreshExpiresIn;
 }

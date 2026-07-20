@@ -1,20 +1,30 @@
 package com.payflow.user.service;
 
+import com.payflow.user.kafka.producer.UserEventProducer;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.UUID;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.payflow.common.event.UserRegistered;
 import com.payflow.common.exception.BusinessException;
 import com.payflow.common.jwt.JwtProperties;
 import com.payflow.common.jwt.JwtUtil;
-import com.payflow.user.dto.LoginRequest;
-import com.payflow.user.dto.LoginResponse;
-import com.payflow.user.dto.RegisterRequest;
-import com.payflow.user.dto.RegisterResponse;
+import com.payflow.user.dto.request.LoginRequest;
+import com.payflow.user.dto.request.RefreshTokenRequest;
+import com.payflow.user.dto.request.RegisterRequest;
+import com.payflow.user.dto.response.LoginResponse;
+import com.payflow.user.dto.response.RegisterResponse;
+import com.payflow.user.entity.RefreshToken;
 import com.payflow.user.entity.User;
 import com.payflow.user.entity.UserRole;
 import com.payflow.user.entity.UserStatus;
+import com.payflow.user.repository.RefreshTokenRepository;
 import com.payflow.user.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -22,8 +32,11 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 public class AuthService {
+    private final UserEventProducer userEventProducer;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final TokenHashService tokenHashService;
+    private final RefreshTokenRepository refreshTokenRepository;
 
     private final JwtUtil jwtUtil;
     private final JwtProperties jwtProperties;
@@ -41,6 +54,14 @@ public class AuthService {
                 UserStatus.ACTIVE);
         User saved = userRepository.save(user);
 
+        userEventProducer.publishUserRegistered(new UserRegistered(
+            UUID.randomUUID(), 
+            saved.getId(), 
+            saved.getEmail(), 
+            saved.getFullName(), 
+            saved.getCreatedAt()
+        ));
+
         return RegisterResponse.builder()
                 .id(saved.getId())
                 .email(saved.getEmail())
@@ -51,7 +72,7 @@ public class AuthService {
                 .build();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public LoginResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new BusinessException(HttpStatus.UNAUTHORIZED, "Invalid email or password"));
@@ -62,10 +83,52 @@ public class AuthService {
             throw new BusinessException(HttpStatus.UNAUTHORIZED, "Invalid email or password");
         }
         String token = jwtUtil.generateAccessToken(user.getId(), user.getRole().name());
+        // Generate refresh token
+        String rawRefreshToken = jwtUtil.generateRefreshToken();
+        String tokenHash = tokenHashService.hash(rawRefreshToken);
+        Instant expiresAt = Instant.now().plus(
+                jwtProperties.refreshTokenExpirationMinutes(), ChronoUnit.MINUTES);
+
+        refreshTokenRepository.save(new RefreshToken(user, tokenHash, expiresAt));
         return LoginResponse.builder()
-            .accessToken(token)
-            .tokenType("Bearer")
-            .expiresIn(jwtProperties.accessTokenExpirationMinutes())
-            .build();
+                .accessToken(token)
+                .tokenType("Bearer")
+                .expiresIn(jwtProperties.accessTokenExpirationMinutes() * 60L)
+                .refreshToken(rawRefreshToken)
+                .refreshExpiresIn(jwtProperties.refreshTokenExpirationMinutes() * 60L)
+                .build();
+    }
+
+    @Transactional
+    public LoginResponse refresh(RefreshTokenRequest request) {
+        String tokenHash = tokenHashService.hash(request.getRefreshToken());
+
+        RefreshToken stored = refreshTokenRepository
+                .findByTokenHashAndRevokedFalse(tokenHash)
+                .orElseThrow(() -> new BusinessException(HttpStatus.UNAUTHORIZED, "Invalid refresh token"));
+        if (stored.getExpiresAt().isBefore(Instant.now())) {
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "Refresh token expired");
+        }
+        User user = stored.getUser();
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "Account is disabled");
+        }
+        String newToken = jwtUtil.generateAccessToken(user.getId(), user.getRole().name());
+        return LoginResponse.builder()
+                .accessToken(newToken)
+                .tokenType("Bearer")
+                .expiresIn(jwtProperties.accessTokenExpirationMinutes() * 60L)
+                .refreshToken(request.getRefreshToken())
+                .refreshExpiresIn(Duration.between(Instant.now(), stored.getExpiresAt()).getSeconds())
+                .build();
+    }
+
+    @Transactional
+    public void logout(RefreshTokenRequest request) {
+        String tokenHash = tokenHashService.hash(request.getRefreshToken());
+        RefreshToken stored = refreshTokenRepository
+                .findByTokenHashAndRevokedFalse(tokenHash)
+                .orElseThrow(() -> new BusinessException(HttpStatus.UNAUTHORIZED, "Invalid refresh token"));
+        stored.revoke();
     }
 }

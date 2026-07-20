@@ -8,10 +8,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.payflow.common.dto.ApiResponse;
-import com.payflow.user.dto.LoginRequest;
-import com.payflow.user.dto.LoginResponse;
-import com.payflow.user.dto.RegisterRequest;
-import com.payflow.user.dto.RegisterResponse;
+import com.payflow.user.dto.request.LoginRequest;
+import com.payflow.user.dto.request.RefreshTokenRequest;
+import com.payflow.user.dto.request.RegisterRequest;
+import com.payflow.user.dto.response.LoginResponse;
+import com.payflow.user.dto.response.RegisterResponse;
 import com.payflow.user.service.AuthService;
 
 import jakarta.validation.Valid;
@@ -33,5 +34,17 @@ public class AuthController {
     public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request) {
         LoginResponse response = authService.login(request);
         return ResponseEntity.status(HttpStatus.OK).body(ApiResponse.ok(response));
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<ApiResponse<LoginResponse>> refresh(@Valid @RequestBody RefreshTokenRequest request) {
+        LoginResponse response = authService.refresh(request);
+        return ResponseEntity.status(HttpStatus.OK).body(ApiResponse.ok(response));
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<Void>> logout(@Valid @RequestBody RefreshTokenRequest request) {
+        authService.logout(request);
+        return ResponseEntity.status(HttpStatus.OK).body(ApiResponse.ok(null));
     }
 }
