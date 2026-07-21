@@ -1,32 +1,6 @@
-# Profile dùng khi api-gateway chạy bên trong docker-compose (Phase 0).
-# Kích hoạt bằng biến môi trường SPRING_PROFILES_ACTIVE=docker (đã khai báo trong docker-compose.yml).
-# Ở Phase 0 chưa có service business nào để route tới, nên phần dưới chỉ là
-# placeholder minh hoạ việc gọi nhau qua hostname nội bộ Docker (VD: wallet-service:8081)
-# như roadmap yêu cầu, sẽ được bổ sung route thật khi các service đó ra đời.
-spring:
-  cloud:
-    gateway:
-      server:
-        webflux:
-          routes:
-            - id: user-service-auth
-              uri: http://user-service:8081
-              predicates:
-                - Path=/api/v1/auth/**
-            - id: user-service-users
-              uri: http://user-service:8081
-              predicates:
-                - Path=/api/v1/users/**
-payflow:
-  jwt:
-    secret: ${JWT_SECRET}
-    access-token-expiration-minutes: 15
-    refresh-token-expiration-minutes: 10080
+# Giá trị khi chạy trong docker-compose.
+# JWT_SECRET lấy từ env_file (infrastructure/.env).
 
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
+USER_SERVICE_URI: http://user-service:8081
 
 management.endpoint.health.show-details: always
