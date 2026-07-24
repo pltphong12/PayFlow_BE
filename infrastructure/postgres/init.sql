@@ -2,3 +2,4 @@
 -- Mỗi microservice dùng database riêng; Flyway trong service tạo bảng trong database đó.
 
 CREATE DATABASE payflow_user_db;
+CREATE DATABASE payflow_wallet_db;

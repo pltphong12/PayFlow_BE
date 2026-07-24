@@ -124,5 +124,27 @@ services:
       timeout: 5s
       retries: 5
       start_period: 40s
+  
+  wallet-service:
+    build:
+      context: ..
+      dockerfile: services/wallet-service/Dockerfile
+    container_name: payflow-wallet-service
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8082/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
 volumes:
   postgres_data:
