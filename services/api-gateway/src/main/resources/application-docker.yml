@@ -2,5 +2,6 @@
 # JWT_SECRET lấy từ env_file (infrastructure/.env).
 
 USER_SERVICE_URI: http://user-service:8081
+WALLET_SERVICE_URI: http://wallet-service:8082
 
 management.endpoint.health.show-details: always

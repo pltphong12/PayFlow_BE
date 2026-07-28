@@ -24,6 +24,10 @@ spring:
               uri: ${USER_SERVICE_URI}
               predicates:
                 - Path=/api/v1/users/**
+            - id: wallet-service
+              uri: ${WALLET_SERVICE_URI}
+              predicates:
+                - Path=/api/v1/wallets/me,/api/v1/wallets/me/**
 
 payflow:
   jwt:

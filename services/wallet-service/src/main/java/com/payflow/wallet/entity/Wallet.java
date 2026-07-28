@@ -40,7 +40,7 @@ public class Wallet {
     public Wallet(UUID userId) {
         this.userId = userId;
         this.balance = BigDecimal.ZERO;
-        this.currency = "USD";
+        this.currency = "VND";
         this.status = WalletStatus.ACTIVE;
     }
 

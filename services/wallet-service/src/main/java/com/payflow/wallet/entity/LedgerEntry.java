@@ -21,7 +21,9 @@ public class LedgerEntry {
     @JoinColumn(name = "wallet_id", nullable = false)
     private Wallet wallet;
 
-    @Column(name = "transaction_id", nullable = false)
+    // Phase 2/3 có thể tạo ledger entries trước khi có transactionId thật,
+    // nên `transaction_id` được phép NULL theo schema Flyway.
+    @Column(name = "transaction_id")
     private UUID transactionId;
 
     @Enumerated(EnumType.STRING)

@@ -1,9 +1,12 @@
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /workspace
+
 COPY pom.xml .
 COPY common ./common
 COPY services/user-service ./services/user-service
 COPY services/api-gateway/pom.xml ./services/api-gateway/pom.xml
+COPY services/wallet-service/pom.xml ./services/wallet-service/pom.xml
+
 RUN mvn -q -pl services/user-service -am -DskipTests package
 
 FROM eclipse-temurin:21-jre-alpine AS runtime

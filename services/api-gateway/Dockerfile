@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-
 # ===== Stage 1: Build =====
 # Build ngay từ context gốc của repo (root pom.xml) vì đây là Maven multi-module project
 FROM maven:3.9-eclipse-temurin-21 AS build
@@ -10,6 +8,7 @@ COPY pom.xml .
 COPY common ./common
 COPY services/api-gateway ./services/api-gateway
 COPY services/user-service/pom.xml ./services/user-service/pom.xml
+COPY services/wallet-service/pom.xml ./services/wallet-service/pom.xml
 
 # Build riêng module api-gateway kèm theo module common mà nó phụ thuộc (-am), bỏ qua test để build image nhanh hơn (test đã chạy ở bước CI riêng)
 RUN mvn -q -pl services/api-gateway -am -DskipTests package
