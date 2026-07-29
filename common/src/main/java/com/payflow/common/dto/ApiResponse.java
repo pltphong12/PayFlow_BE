@@ -24,6 +24,10 @@ public record ApiResponse<T>(
         return new ApiResponse<>(true, code, message, data, Instant.now());
     }
 
+    public static <T> ApiResponse<T> accepted(T data) {
+        return new ApiResponse<>(true, HttpStatus.ACCEPTED.value(), null, data, Instant.now());
+    }
+
     public static <T> ApiResponse<T> created(T data) {
         return ok(HttpStatus.CREATED.value(), null, data);
     }

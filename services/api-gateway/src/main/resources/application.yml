@@ -28,6 +28,10 @@ spring:
               uri: ${WALLET_SERVICE_URI}
               predicates:
                 - Path=/api/v1/wallets/me,/api/v1/wallets/me/**
+            - id: wallet-service-topup
+              uri: ${WALLET_SERVICE_URI}
+              predicates:
+                - Path=/api/v1/topup,/api/v1/topup/**
 
 payflow:
   jwt:
