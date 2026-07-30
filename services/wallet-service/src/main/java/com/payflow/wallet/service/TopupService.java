@@ -3,8 +3,10 @@ package com.payflow.wallet.service;
 import com.payflow.wallet.dto.request.CreateTopupRequest;
 import com.payflow.wallet.dto.response.TopupResponse;
 import com.payflow.wallet.entity.TopupRequest;
+import com.payflow.wallet.event.TopupCreated;
 import com.payflow.wallet.repository.TopupRequestRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,6 +16,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class TopupService {
 
+    private final ApplicationEventPublisher applicationEventPublisher;
     private final TopupRequestRepository topupRequestRepository;
 
     @Transactional
@@ -29,6 +32,7 @@ public class TopupService {
                             idempotencyKey
                     );
                     TopupRequest savedRequest = topupRequestRepository.save(topupRequest);
+                    applicationEventPublisher.publishEvent(new TopupCreated(savedRequest.getId()));
                     return toResponse(savedRequest);
                 });
     }

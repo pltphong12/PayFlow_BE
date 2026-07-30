@@ -44,6 +44,11 @@ public class Wallet {
         this.status = WalletStatus.ACTIVE;
     }
 
+
+    public void credit(BigDecimal amount) {
+        this.balance = this.balance.add(amount);
+    }
+
     @PrePersist
     void onCreate() {
         if (id == null) {
