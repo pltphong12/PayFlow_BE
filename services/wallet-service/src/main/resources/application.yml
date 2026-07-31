@@ -23,6 +23,11 @@ spring:
     locations: classpath:db/migration
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
     consumer:
       group-id: wallet-service
       auto-offset-reset: earliest
@@ -36,6 +41,9 @@ payflow:
   kafka:
     topics:
       user-events: user-events
+      wallet-events: wallet-events
+  outbox:
+    poll-interval-ms: 2000
 management:
   endpoints:
     web:

@@ -14,6 +14,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import java.math.BigDecimal;
+import java.util.TimeZone;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -25,11 +26,17 @@ import org.testcontainers.utility.DockerImageName;
         classes = com.payflow.wallet.WalletServiceApplication.class,
         properties = {
                 "KAFKA_BOOTSTRAP_SERVERS=localhost:9092",
-                "spring.kafka.listener.auto-startup=false"
+                "spring.kafka.listener.auto-startup=false",
+                "spring.task.scheduling.enabled=false",
+                "payflow.outbox.poller-enabled=false"
         }
 )
 @Testcontainers
 class WalletServiceJpaTest {
+
+    static {
+        TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+    }
 
     @Container
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(DockerImageName.parse("postgres:16"))

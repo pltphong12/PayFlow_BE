@@ -29,6 +29,7 @@ public class OutboxEvent {
     @Column(nullable = false, columnDefinition = "jsonb")
     private String payload;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 10)
     private OutboxEventStatus status;
 
