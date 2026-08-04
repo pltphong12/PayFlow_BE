@@ -44,9 +44,29 @@ public class Wallet {
         this.status = WalletStatus.ACTIVE;
     }
 
+    public void debit(BigDecimal amount) {
+        validateAmount(amount);
+        if (status != WalletStatus.ACTIVE) {
+            throw new IllegalStateException("Wallet is not active");
+        }
+        if (balance.compareTo(amount) < 0) {
+            throw new IllegalStateException("Insufficient wallet balance");
+        }
+        this.balance = this.balance.subtract(amount);
+    }
 
     public void credit(BigDecimal amount) {
+        validateAmount(amount);
+        if (status != WalletStatus.ACTIVE) {
+            throw new IllegalStateException("Wallet is not active");
+        }
         this.balance = this.balance.add(amount);
+    }
+
+    private void validateAmount(BigDecimal amount) {
+        if (amount == null || amount.signum() <= 0) {
+            throw new IllegalArgumentException("Amount must be positive");
+        }
     }
 
     @PrePersist

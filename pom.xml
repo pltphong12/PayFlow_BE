@@ -72,5 +72,6 @@
         <module>services/api-gateway</module>
         <module>services/user-service</module>
         <module>services/wallet-service</module>
+        <module>services/transaction-service</module>
     </modules>
 </project>

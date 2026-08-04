@@ -1,0 +1,7 @@
+POSTGRES_HOST: postgres
+POSTGRES_PORT: 5432
+POSTGRES_DB: payflow_transaction_db
+KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+WALLET_SERVICE_URI: http://wallet-service:8082
+
+management.endpoint.health.show-details: always

@@ -3,3 +3,4 @@
 
 CREATE DATABASE payflow_user_db;
 CREATE DATABASE payflow_wallet_db;
+CREATE DATABASE payflow_transaction_db;
