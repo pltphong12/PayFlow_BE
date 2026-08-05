@@ -2,6 +2,7 @@ package com.payflow.common.exception;
 
 import com.payflow.common.dto.ApiResponse;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
@@ -40,6 +42,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleUnexpectedException(Exception exception) {
+        log.error("Unhandled exception", exception);
+
         return ResponseEntity.internalServerError().body(
                 ApiResponse.error(
                         HttpStatus.INTERNAL_SERVER_ERROR.value(),
