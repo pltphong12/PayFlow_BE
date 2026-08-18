@@ -5,9 +5,7 @@ import com.payflow.common.exception.BusinessException;
 import com.payflow.common.jwt.JwtProperties;
 import com.payflow.common.jwt.JwtUtil;
 import com.payflow.user.dto.request.LoginRequest;
-import com.payflow.user.dto.request.RefreshTokenRequest;
 import com.payflow.user.dto.request.RegisterRequest;
-import com.payflow.user.dto.response.LoginResponse;
 import com.payflow.user.dto.response.RegisterResponse;
 import com.payflow.user.entity.RefreshToken;
 import com.payflow.user.entity.User;
@@ -142,31 +140,28 @@ class AuthServiceTest {
         when(userRepository.findByEmail("user@payflow.vn")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("Password123", "hashed-password")).thenReturn(true);
 
-        LoginResponse response = authService.login(request);
+        AuthTokenPair response = authService.login(request);
 
-        assertThat(response.getAccessToken()).isNotBlank();
-        assertThat(response.getTokenType()).isEqualTo("Bearer");
-        assertThat(response.getExpiresIn()).isEqualTo(900L);
-        assertThat(response.getRefreshToken()).isNotBlank();
-        assertThat(response.getRefreshExpiresIn()).isEqualTo(604800L);
+        assertThat(response.accessToken()).isNotBlank();
+        assertThat(response.accessExpiresIn()).isEqualTo(900L);
+        assertThat(response.refreshToken()).isNotBlank();
+        assertThat(response.refreshExpiresIn()).isEqualTo(604800L);
         verify(refreshTokenRepository).save(any(RefreshToken.class));
     }
 
     @Test
     void should_throw_unauthorized_when_refresh_token_is_invalid() {
-        RefreshTokenRequest request = mockRefreshTokenRequest("invalid-refresh-token");
         when(refreshTokenRepository.findByTokenHashAndRevokedFalse(anyString())).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> authService.refresh(request))
+        assertThatThrownBy(() -> authService.refresh("invalid-refresh-token"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((BusinessException) ex).getStatus())
                 .isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 
     @Test
-    void should_logout_and_revoke_refresh_token() {
+    void should_rotate_refresh_token() {
         String rawRefreshToken = jwtUtil.generateRefreshToken();
-        RefreshTokenRequest request = mockRefreshTokenRequest(rawRefreshToken);
         User user = activeUser(UUID.randomUUID(), "user@payflow.vn", "hashed-password", "User");
         RefreshToken stored = new RefreshToken(user, tokenHashService.hash(rawRefreshToken),
                 Instant.now().plusSeconds(3600));
@@ -174,7 +169,24 @@ class AuthServiceTest {
         when(refreshTokenRepository.findByTokenHashAndRevokedFalse(tokenHashService.hash(rawRefreshToken)))
                 .thenReturn(Optional.of(stored));
 
-        authService.logout(request);
+        AuthTokenPair response = authService.refresh(rawRefreshToken);
+
+        assertThat(stored.isRevoked()).isTrue();
+        assertThat(response.refreshToken()).isNotEqualTo(rawRefreshToken);
+        verify(refreshTokenRepository).save(any(RefreshToken.class));
+    }
+
+    @Test
+    void should_logout_and_revoke_refresh_token() {
+        String rawRefreshToken = jwtUtil.generateRefreshToken();
+        User user = activeUser(UUID.randomUUID(), "user@payflow.vn", "hashed-password", "User");
+        RefreshToken stored = new RefreshToken(user, tokenHashService.hash(rawRefreshToken),
+                Instant.now().plusSeconds(3600));
+
+        when(refreshTokenRepository.findByTokenHashAndRevokedFalse(tokenHashService.hash(rawRefreshToken)))
+                .thenReturn(Optional.of(stored));
+
+        authService.logout(rawRefreshToken);
 
         assertThat(stored.isRevoked()).isTrue();
     }
@@ -197,12 +209,6 @@ class AuthServiceTest {
         if (password != null) {
             when(request.getPassword()).thenReturn(password);
         }
-        return request;
-    }
-
-    private static RefreshTokenRequest mockRefreshTokenRequest(String refreshToken) {
-        RefreshTokenRequest request = mock(RefreshTokenRequest.class);
-        when(request.getRefreshToken()).thenReturn(refreshToken);
         return request;
     }
 

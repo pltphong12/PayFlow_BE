@@ -40,6 +40,10 @@ payflow:
     secret: ${JWT_SECRET}
     access-token-expiration-minutes: 15
     refresh-token-expiration-minutes: 10080
+  auth:
+    refresh-cookie:
+      secure: ${REFRESH_COOKIE_SECURE:false}
+      same-site: ${REFRESH_COOKIE_SAME_SITE:Lax}
   kafka:
     topics:
       user-events: user-events
