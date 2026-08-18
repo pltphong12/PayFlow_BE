@@ -6,6 +6,7 @@ COPY common ./common
 COPY services/user-service ./services/user-service
 COPY services/api-gateway/pom.xml ./services/api-gateway/pom.xml
 COPY services/wallet-service/pom.xml ./services/wallet-service/pom.xml
+COPY services/transaction-service/pom.xml ./services/transaction-service/pom.xml
 
 RUN mvn -q -pl services/user-service -am -DskipTests package
 

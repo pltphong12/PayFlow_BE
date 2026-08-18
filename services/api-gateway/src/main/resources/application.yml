@@ -32,7 +32,30 @@ spring:
               uri: ${WALLET_SERVICE_URI}
               predicates:
                 - Path=/api/v1/topup,/api/v1/topup/**
+            - id: transaction-service
+              uri: ${TRANSACTION_SERVICE_URI}
+              predicates:
+                - Path=/api/v1/transfers,/api/v1/transfers/**
 
+          globalcors:
+            add-to-simple-url-handler-mapping: true
+            cors-configurations:
+              '[/**]':
+                allowedOrigins:
+                  - http://localhost:5173 # Vite mặc định
+                  # - http://localhost:3000 # nếu UI chạy React/Next ở port 3000
+                allowedMethods:
+                  - GET
+                  - POST
+                  - PUT
+                  - PATCH
+                  - DELETE
+                  - OPTIONS
+                allowedHeaders: "*"
+                exposedHeaders:
+                  - Authorization
+                allowCredentials: true
+                maxAge: 3600
 payflow:
   jwt:
     secret: ${JWT_SECRET}

@@ -1,10 +1,12 @@
 package com.payflow.transaction.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.payflow.common.event.TransferCompleted;
+import com.payflow.common.event.TransferFailed;
 import com.payflow.common.exception.BusinessException;
-import com.payflow.transaction.entity.SagaStep;
-import com.payflow.transaction.entity.SagaStepName;
-import com.payflow.transaction.entity.TransactionStatus;
-import com.payflow.transaction.entity.TransferTransaction;
+import com.payflow.transaction.entity.*;
+import com.payflow.transaction.repository.OutboxEventRepository;
 import com.payflow.transaction.repository.SagaStepRepository;
 import com.payflow.transaction.repository.TransferTransactionRepository;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -23,6 +26,8 @@ public class TransferSagaStateService {
 
     private final TransferTransactionRepository transactionRepository;
     private final SagaStepRepository sagaStepRepository;
+    private final OutboxEventRepository outboxEventRepository;
+    private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
     public Optional<TransferTransaction> findByIdempotencyKey(String idempotencyKey) {
@@ -73,13 +78,22 @@ public class TransferSagaStateService {
     @Transactional
     public void markDebitFailed(UUID transactionId) {
         getStep(transactionId, SagaStepName.DEBIT_SENDER).markFailed();
-        getById(transactionId).markFailed();
+
+        TransferTransaction transaction = getById(transactionId);
+        transaction.markFailed();
+        createTransferFailedOutbox(
+            transaction,
+            "Sender wallet debit failed"
+        );
     }
 
     @Transactional
     public void markCreditSuccessAndComplete(UUID transactionId) {
         getStep(transactionId, SagaStepName.CREDIT_RECEIVER).markSuccess();
-        getById(transactionId).markCompleted();
+
+        TransferTransaction transaction = getById(transactionId);
+        transaction.markCompleted();
+        createTransferCompletedOutbox(transaction);
     }
 
     @Transactional
@@ -91,7 +105,13 @@ public class TransferSagaStateService {
     @Transactional
     public void markCompensatedAndFailed(UUID transactionId) {
         getStep(transactionId, SagaStepName.DEBIT_SENDER).markCompensated();
-        getById(transactionId).markFailed();
+
+        TransferTransaction transaction = getById(transactionId);
+        transaction.markFailed();
+        createTransferFailedOutbox(
+            transaction,
+            "Receiver wallet credit failed; sender was refunded"
+        );
     }
 
     @Transactional(readOnly = true)
@@ -118,5 +138,53 @@ public class TransferSagaStateService {
                 HttpStatus.INTERNAL_SERVER_ERROR,
                 "Saga step not found: " + stepName
             ));
+    }
+
+    private void createTransferCompletedOutbox(
+        TransferTransaction transaction
+    ) {
+        TransferCompleted event = new TransferCompleted(
+            UUID.randomUUID(),
+            transaction.getId(),
+            transaction.getSenderUserId(),
+            transaction.getReceiverUserId(),
+            transaction.getAmount(),
+            Instant.now()
+        );
+        outboxEventRepository.save(new OutboxEvent(
+            transaction.getId(),
+            TransferCompleted.class.getSimpleName(),
+            serialize(event)
+        ));
+    }
+    private void createTransferFailedOutbox(
+        TransferTransaction transaction,
+        String failureReason
+    ) {
+        TransferFailed event = new TransferFailed(
+            UUID.randomUUID(),
+            transaction.getId(),
+            transaction.getSenderUserId(),
+            transaction.getReceiverUserId(),
+            transaction.getAmount(),
+            failureReason,
+            Instant.now()
+        );
+        outboxEventRepository.save(new OutboxEvent(
+            transaction.getId(),
+            TransferFailed.class.getSimpleName(),
+            serialize(event)
+        ));
+    }
+
+    private String serialize(Object event) {
+        try {
+            return objectMapper.writeValueAsString(event);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException(
+                "Cannot serialize transfer outbox event",
+                exception
+            );
+        }
     }
 }

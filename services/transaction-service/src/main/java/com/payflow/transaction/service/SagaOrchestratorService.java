@@ -116,7 +116,7 @@ public class SagaOrchestratorService {
                 "[SAGA] step=CREDIT_RECEIVER status=SUCCESS transactionId={}",
                 transactionId
             );
-            return toResponse(transaction);
+            return toResponse(sagaStateService.getById(transactionId));
         } catch (RestClientResponseException exception) {
             if (!exception.getStatusCode().is4xxClientError()) {
                 throw indeterminateFailure(
@@ -142,6 +142,28 @@ public class SagaOrchestratorService {
                 exception
             );
         }
+    }
+
+    public TransferResponse getTransfer(
+        UUID requesterUserId,
+        UUID transactionId
+    ) {
+        TransferTransaction transaction =
+            sagaStateService.getById(transactionId);
+        // Check ownership
+        boolean isParticipant = requesterUserId.equals(
+            transaction.getSenderUserId()
+        ) || requesterUserId.equals(
+            transaction.getReceiverUserId()
+        );
+
+        if (!isParticipant) {
+            throw new BusinessException(
+                HttpStatus.FORBIDDEN,
+                "You do not have access to this transfer"
+            );
+        }
+        return toResponse(transaction);
     }
 
     private TransferResponse compensateSender(
