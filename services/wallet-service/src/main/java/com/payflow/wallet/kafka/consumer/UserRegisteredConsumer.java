@@ -16,12 +16,6 @@ public class UserRegisteredConsumer {
     @KafkaListener(topics = "${payflow.kafka.topics.user-events}")
     public void onUserRegistered(UserRegistered event) {
         log.info("Received UserRegisteredEvent for userId {}", event.userId());
-        try {
-            walletService.createWalletIfAbsent(event.userId());
-        } catch (IllegalArgumentException e) {
-            // không DLQ — log lỗi, không nuốt exception nếu muốn Kafka retry offset
-            log.error("Failed to create wallet for userId {}", event.userId(), e);
-            throw e;
-        }
+        walletService.handleUserRegistered(event);
     }
 }

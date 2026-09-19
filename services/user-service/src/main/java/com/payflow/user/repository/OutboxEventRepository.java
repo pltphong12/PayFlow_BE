@@ -1,7 +1,7 @@
-package com.payflow.transaction.repository;
+package com.payflow.user.repository;
 
-import com.payflow.transaction.entity.OutboxEvent;
-import com.payflow.transaction.entity.OutboxEventStatus;
+import com.payflow.user.entity.OutboxEvent;
+import com.payflow.user.entity.OutboxEventStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -11,10 +11,5 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, UUID> 
 
     List<OutboxEvent> findTop100ByStatusOrderByCreatedAtAsc(
         OutboxEventStatus status
-    );
-
-    boolean existsByAggregateIdAndEventType(
-        UUID aggregateId,
-        String eventType
     );
 }

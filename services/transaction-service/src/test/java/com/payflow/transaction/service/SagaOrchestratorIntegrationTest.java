@@ -5,6 +5,7 @@ import com.payflow.transaction.TransactionServiceApplication;
 import com.payflow.transaction.client.WalletServiceClient;
 import com.payflow.transaction.client.dto.WalletLookupResponse;
 import com.payflow.transaction.client.dto.WalletMutationResponse;
+import com.payflow.transaction.dto.response.TransferResponse;
 import com.payflow.transaction.entity.SagaStepName;
 import com.payflow.transaction.entity.SagaStepStatus;
 import com.payflow.transaction.entity.TransactionStatus;
@@ -29,6 +30,10 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.TimeZone;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -38,6 +43,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 
 @SpringBootTest(
         classes = TransactionServiceApplication.class,
@@ -82,6 +88,9 @@ class SagaOrchestratorIntegrationTest {
 
     @Autowired
     OutboxEventRepository outboxEventRepository;
+
+    @Autowired
+    TransferSagaStateService sagaStateService;
 
     @MockBean
     WalletServiceClient walletServiceClient;
@@ -327,6 +336,300 @@ class SagaOrchestratorIntegrationTest {
         );
     }
 
+    @Test
+    void transfer_whenIdempotencyKeyIsReusedWithDifferentPayload_returnsConflict() {
+        UUID senderUserId = UUID.randomUUID();
+        UUID receiverUserId = UUID.randomUUID();
+        UUID senderWalletId = UUID.randomUUID();
+        UUID receiverWalletId = UUID.randomUUID();
+        String idempotencyKey = UUID.randomUUID().toString();
+        BigDecimal amount = new BigDecimal("10000");
+
+        stubWalletLookups(
+                senderUserId,
+                receiverUserId,
+                senderWalletId,
+                receiverWalletId
+        );
+        stubSuccessfulMutations(
+                senderWalletId,
+                receiverWalletId,
+                amount
+        );
+
+        var first = sagaOrchestratorService.transfer(
+                senderUserId,
+                receiverUserId,
+                amount,
+                idempotencyKey
+        );
+
+        assertThatThrownBy(() -> sagaOrchestratorService.transfer(
+                senderUserId,
+                UUID.randomUUID(),
+                amount,
+                idempotencyKey
+        )).isInstanceOf(BusinessException.class)
+                .satisfies(exception -> assertThat(
+                        ((BusinessException) exception).getStatus()
+                ).isEqualTo(HttpStatus.CONFLICT));
+
+        assertThat(transactionRepository.count()).isEqualTo(1);
+        assertThat(outboxEventRepository.count()).isEqualTo(1);
+        assertThat(first.status()).isEqualTo(TransactionStatus.COMPLETED);
+    }
+
+    @Test
+    void transfer_whenDebitTimesOut_marksSagaRecoverableAndReturns503() {
+        UUID senderUserId = UUID.randomUUID();
+        UUID receiverUserId = UUID.randomUUID();
+        UUID senderWalletId = UUID.randomUUID();
+        UUID receiverWalletId = UUID.randomUUID();
+        String idempotencyKey = UUID.randomUUID().toString();
+        BigDecimal amount = new BigDecimal("10000");
+
+        stubWalletLookups(
+                senderUserId,
+                receiverUserId,
+                senderWalletId,
+                receiverWalletId
+        );
+        when(walletServiceClient.debit(
+                eq(senderWalletId),
+                any(UUID.class),
+                eq(amount)
+        )).thenThrow(new ResourceAccessException("timeout"));
+
+        assertThatThrownBy(() -> sagaOrchestratorService.transfer(
+                senderUserId,
+                receiverUserId,
+                amount,
+                idempotencyKey
+        )).isInstanceOf(BusinessException.class)
+                .satisfies(exception -> assertThat(
+                        ((BusinessException) exception).getStatus()
+                ).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+
+        var transaction = transactionRepository
+                .findByIdempotencyKey(idempotencyKey)
+                .orElseThrow();
+        assertThat(transaction.getStatus()).isEqualTo(TransactionStatus.PENDING);
+        assertThat(stepStatus(transaction.getId(), SagaStepName.DEBIT_SENDER))
+                .isEqualTo(SagaStepStatus.PENDING);
+        assertThat(outboxEventRepository.count()).isEqualTo(0);
+    }
+
+    @Test
+    void transfer_whenCompensationTimesOut_keepsCompensatingAndReturns503() {
+        UUID senderUserId = UUID.randomUUID();
+        UUID receiverUserId = UUID.randomUUID();
+        UUID senderWalletId = UUID.randomUUID();
+        UUID receiverWalletId = UUID.randomUUID();
+        String idempotencyKey = UUID.randomUUID().toString();
+        BigDecimal amount = new BigDecimal("10000");
+
+        stubWalletLookups(
+                senderUserId,
+                receiverUserId,
+                senderWalletId,
+                receiverWalletId
+        );
+        when(walletServiceClient.debit(
+                eq(senderWalletId),
+                any(UUID.class),
+                eq(amount)
+        )).thenReturn(new WalletMutationResponse(
+                senderWalletId,
+                new BigDecimal("40000"),
+                1
+        ));
+        when(walletServiceClient.credit(
+                eq(receiverWalletId),
+                any(UUID.class),
+                eq(amount)
+        )).thenThrow(conflict("Receiver wallet is frozen"));
+        when(walletServiceClient.credit(
+                eq(senderWalletId),
+                any(UUID.class),
+                eq(amount)
+        )).thenThrow(new ResourceAccessException("timeout"));
+
+        assertThatThrownBy(() -> sagaOrchestratorService.transfer(
+                senderUserId,
+                receiverUserId,
+                amount,
+                idempotencyKey
+        )).isInstanceOf(BusinessException.class)
+                .satisfies(exception -> assertThat(
+                        ((BusinessException) exception).getStatus()
+                ).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+
+        var transaction = transactionRepository
+                .findByIdempotencyKey(idempotencyKey)
+                .orElseThrow();
+        assertThat(transaction.getStatus()).isEqualTo(TransactionStatus.COMPENSATING);
+        assertThat(stepStatus(transaction.getId(), SagaStepName.DEBIT_SENDER))
+                .isEqualTo(SagaStepStatus.SUCCESS);
+        assertThat(stepStatus(transaction.getId(), SagaStepName.CREDIT_RECEIVER))
+                .isEqualTo(SagaStepStatus.FAILED);
+        assertThat(outboxEventRepository.count()).isEqualTo(0);
+    }
+
+    @Test
+    void transfer_whenCalledConcurrentlyWithSameIdempotencyKey_createsOneTransaction() throws Exception {
+        UUID senderUserId = UUID.randomUUID();
+        UUID receiverUserId = UUID.randomUUID();
+        UUID senderWalletId = UUID.randomUUID();
+        UUID receiverWalletId = UUID.randomUUID();
+        String idempotencyKey = UUID.randomUUID().toString();
+        BigDecimal amount = new BigDecimal("10000");
+
+        stubWalletLookups(
+                senderUserId,
+                receiverUserId,
+                senderWalletId,
+                receiverWalletId
+        );
+        stubSuccessfulMutations(
+                senderWalletId,
+                receiverWalletId,
+                amount
+        );
+
+        CountDownLatch readyLatch = new CountDownLatch(2);
+        CountDownLatch startLatch = new CountDownLatch(1);
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            Future<TransferResponse> first = executor.submit(() -> runConcurrentTransfer(
+                    senderUserId,
+                    receiverUserId,
+                    amount,
+                    idempotencyKey,
+                    readyLatch,
+                    startLatch
+            ));
+            Future<TransferResponse> second = executor.submit(() -> runConcurrentTransfer(
+                    senderUserId,
+                    receiverUserId,
+                    amount,
+                    idempotencyKey,
+                    readyLatch,
+                    startLatch
+            ));
+            readyLatch.await();
+            startLatch.countDown();
+
+            var response1 = first.get();
+            var response2 = second.get();
+
+            assertThat(response1.id()).isEqualTo(response2.id());
+            assertThat(transactionRepository.count()).isEqualTo(1);
+            assertThat(outboxEventRepository.count()).isEqualTo(1);
+            verify(walletServiceClient, times(1)).debit(
+                    eq(senderWalletId),
+                    any(UUID.class),
+                    eq(amount)
+            );
+            verify(walletServiceClient, times(1)).credit(
+                    eq(receiverWalletId),
+                    any(UUID.class),
+                    eq(amount)
+            );
+        }
+    }
+
+    @Test
+    void markCreditSuccess_whenAlreadyCompleted_doesNotCreateDuplicateOutbox() {
+        UUID senderUserId = UUID.randomUUID();
+        UUID receiverUserId = UUID.randomUUID();
+        UUID senderWalletId = UUID.randomUUID();
+        UUID receiverWalletId = UUID.randomUUID();
+        String idempotencyKey = UUID.randomUUID().toString();
+        BigDecimal amount = new BigDecimal("10000");
+
+        stubWalletLookups(
+                senderUserId,
+                receiverUserId,
+                senderWalletId,
+                receiverWalletId
+        );
+        stubSuccessfulMutations(
+                senderWalletId,
+                receiverWalletId,
+                amount
+        );
+
+        var response = sagaOrchestratorService.transfer(
+                senderUserId,
+                receiverUserId,
+                amount,
+                idempotencyKey
+        );
+        assertThat(outboxEventRepository.count()).isEqualTo(1);
+
+        sagaStateService.markCreditSuccessAndComplete(response.id());
+
+        assertThat(outboxEventRepository.count()).isEqualTo(1);
+        assertThat(
+                transactionRepository.findById(response.id()).orElseThrow().getStatus()
+        ).isEqualTo(TransactionStatus.COMPLETED);
+    }
+
+    @Test
+    void transfer_whenSelfTransferRequested_rejectsWithBadRequest() {
+        UUID userId = UUID.randomUUID();
+        String idempotencyKey = UUID.randomUUID().toString();
+
+        assertThatThrownBy(() -> sagaOrchestratorService.transfer(
+                userId,
+                userId,
+                new BigDecimal("10000"),
+                idempotencyKey
+        )).isInstanceOf(BusinessException.class)
+                .satisfies(exception -> assertThat(
+                        ((BusinessException) exception).getStatus()
+                ).isEqualTo(HttpStatus.BAD_REQUEST));
+
+        assertThat(transactionRepository.count()).isZero();
+        assertThat(outboxEventRepository.count()).isZero();
+    }
+
+    @Test
+    void getTransfer_whenRequesterIsNotParticipant_rejectsWithForbidden() {
+        UUID senderUserId = UUID.randomUUID();
+        UUID receiverUserId = UUID.randomUUID();
+        UUID senderWalletId = UUID.randomUUID();
+        UUID receiverWalletId = UUID.randomUUID();
+        String idempotencyKey = UUID.randomUUID().toString();
+        BigDecimal amount = new BigDecimal("10000");
+
+        stubWalletLookups(
+                senderUserId,
+                receiverUserId,
+                senderWalletId,
+                receiverWalletId
+        );
+        stubSuccessfulMutations(
+                senderWalletId,
+                receiverWalletId,
+                amount
+        );
+        var transfer = sagaOrchestratorService.transfer(
+                senderUserId,
+                receiverUserId,
+                amount,
+                idempotencyKey
+        );
+
+        assertThatThrownBy(() -> sagaOrchestratorService.getTransfer(
+                UUID.randomUUID(),
+                transfer.id()
+        )).isInstanceOf(BusinessException.class)
+                .satisfies(exception -> assertThat(
+                        ((BusinessException) exception).getStatus()
+                ).isEqualTo(HttpStatus.FORBIDDEN));
+    }
+
     private void stubWalletLookups(
             UUID senderUserId,
             UUID receiverUserId,
@@ -393,6 +696,29 @@ class SagaOrchestratorIntegrationTest {
                 HttpHeaders.EMPTY,
                 new byte[0],
                 StandardCharsets.UTF_8
+        );
+    }
+
+    private TransferResponse runConcurrentTransfer(
+            UUID senderUserId,
+            UUID receiverUserId,
+            BigDecimal amount,
+            String idempotencyKey,
+            CountDownLatch readyLatch,
+            CountDownLatch startLatch
+    ) {
+        readyLatch.countDown();
+        try {
+            startLatch.await();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(exception);
+        }
+        return sagaOrchestratorService.transfer(
+                senderUserId,
+                receiverUserId,
+                amount,
+                idempotencyKey
         );
     }
 }

@@ -1,7 +1,10 @@
 package com.payflow.wallet.service;
 
+import com.payflow.common.event.UserRegistered;
 import com.payflow.wallet.entity.WalletStatus;
+import com.payflow.wallet.repository.ProcessedEventRepository;
 import com.payflow.wallet.repository.WalletRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,6 +17,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.TimeZone;
 import java.util.UUID;
 
@@ -59,6 +63,15 @@ class WalletServiceJpaTest {
     @Autowired
     WalletRepository walletRepository;
 
+    @Autowired
+    ProcessedEventRepository processedEventRepository;
+
+    @BeforeEach
+    void cleanDatabase() {
+        processedEventRepository.deleteAll();
+        walletRepository.deleteAll();
+    }
+
     @Test
     void createWalletIfAbsent_createsNewWalletWithZeroBalance() {
         UUID userId = UUID.randomUUID();
@@ -73,6 +86,26 @@ class WalletServiceJpaTest {
         assertThat(wallet.getBalance()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(wallet.getCurrency()).isEqualTo("VND");
         assertThat(wallet.getStatus()).isEqualTo(WalletStatus.ACTIVE);
+    }
+
+    @Test
+    void handleUserRegistered_whenEventIsRedelivered_createsWalletOnce() {
+        UUID userId = UUID.randomUUID();
+        UUID eventId = UUID.randomUUID();
+        UserRegistered event = new UserRegistered(
+                eventId,
+                userId,
+                "wallet@payflow.vn",
+                "Wallet User",
+                Instant.now()
+        );
+
+        walletService.handleUserRegistered(event);
+        walletService.handleUserRegistered(event);
+
+        assertThat(walletRepository.count()).isEqualTo(1);
+        assertThat(processedEventRepository.count()).isEqualTo(1);
+        assertThat(processedEventRepository.existsById(eventId)).isTrue();
     }
 }
 

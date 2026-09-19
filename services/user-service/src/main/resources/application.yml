@@ -47,6 +47,8 @@ payflow:
   kafka:
     topics:
       user-events: user-events
+  outbox:
+    poll-interval-ms: 2000
 
 management:
   endpoints:

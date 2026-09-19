@@ -11,7 +11,7 @@ import com.payflow.user.entity.RefreshToken;
 import com.payflow.user.entity.User;
 import com.payflow.user.entity.UserRole;
 import com.payflow.user.entity.UserStatus;
-import com.payflow.user.kafka.producer.UserEventProducer;
+import com.payflow.user.outbox.UserRegistrationOutboxService;
 import com.payflow.user.repository.RefreshTokenRepository;
 import com.payflow.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,7 +45,7 @@ class AuthServiceTest {
             "test-secret-key-at-least-256-bits-long-for-hs256-algorithm";
 
     @Mock
-    private UserEventProducer userEventProducer;
+    private UserRegistrationOutboxService userRegistrationOutboxService;
     @Mock
     private UserRepository userRepository;
     @Mock
@@ -85,7 +85,7 @@ class AuthServiceTest {
         assertThat(response.getRole()).isEqualTo(UserRole.USER);
 
         ArgumentCaptor<UserRegistered> eventCaptor = ArgumentCaptor.forClass(UserRegistered.class);
-        verify(userEventProducer).publishUserRegistered(eventCaptor.capture());
+        verify(userRegistrationOutboxService).enqueueUserRegistered(eventCaptor.capture());
         assertThat(eventCaptor.getValue().userId()).isEqualTo(saved.getId());
         assertThat(eventCaptor.getValue().email()).isEqualTo("new@payflow.vn");
     }
@@ -101,7 +101,7 @@ class AuthServiceTest {
                 .isEqualTo(HttpStatus.CONFLICT);
 
         verify(userRepository, never()).save(any());
-        verify(userEventProducer, never()).publishUserRegistered(any());
+        verify(userRegistrationOutboxService, never()).enqueueUserRegistered(any());
     }
 
     @Test

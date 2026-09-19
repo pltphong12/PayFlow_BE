@@ -7,6 +7,7 @@ import com.payflow.transaction.dto.response.TransferResponse;
 import com.payflow.transaction.entity.TransferTransaction;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.ResourceAccessException;
@@ -34,6 +35,12 @@ public class SagaOrchestratorService {
             .findByIdempotencyKey(idempotencyKey)
             .orElse(null);
         if (existingTransaction != null) {
+            assertIdempotentPayload(
+                existingTransaction,
+                senderUserId,
+                receiverUserId,
+                amount
+            );
             log.info(
                 "[SAGA] step=IDEMPOTENCY status=EXISTING transactionId={}",
                 existingTransaction.getId()
@@ -54,12 +61,30 @@ public class SagaOrchestratorService {
         WalletLookupResponse receiverWallet = walletServiceClient.getWalletByUserId(receiverUserId);
 
         // Create transaction
-        TransferTransaction transaction = sagaStateService.createPendingTransfer(
-            senderUserId,
-            receiverUserId,
-            amount,
-            idempotencyKey
-        );
+        TransferTransaction transaction;
+        try {
+            transaction = sagaStateService.createPendingTransfer(
+                senderUserId,
+                receiverUserId,
+                amount,
+                idempotencyKey
+            );
+        } catch (DataIntegrityViolationException exception) {
+            transaction = sagaStateService
+                .findByIdempotencyKey(idempotencyKey)
+                .orElseThrow(() -> exception);
+            assertIdempotentPayload(
+                transaction,
+                senderUserId,
+                receiverUserId,
+                amount
+            );
+            log.info(
+                "[SAGA] step=IDEMPOTENCY status=RACE_RECOVERED transactionId={}",
+                transaction.getId()
+            );
+            return toResponse(transaction);
+        }
         UUID transactionId = transaction.getId();
         log.info(
             "[SAGA] step=INIT status=SUCCESS transactionId={}",
@@ -102,6 +127,12 @@ public class SagaOrchestratorService {
                 "DEBIT_SENDER",
                 exception
             );
+        } catch (IllegalStateException exception) {
+            throw indeterminateFailure(
+                transactionId,
+                "DEBIT_SENDER",
+                exception
+            );
         }
 
         // Step 2: Credit receiver
@@ -136,6 +167,12 @@ public class SagaOrchestratorService {
                 amount
             );
         } catch (ResourceAccessException exception) {
+            throw indeterminateFailure(
+                transactionId,
+                "CREDIT_RECEIVER",
+                exception
+            );
+        } catch (IllegalStateException exception) {
             throw indeterminateFailure(
                 transactionId,
                 "CREDIT_RECEIVER",
@@ -205,6 +242,16 @@ public class SagaOrchestratorService {
                 HttpStatus.SERVICE_UNAVAILABLE,
                 "Transfer compensation is pending"
             );
+        } catch (ResourceAccessException | IllegalStateException exception) {
+            log.error(
+                "[SAGA] step=COMPENSATE_SENDER status=FAILED transactionId={}",
+                transactionId,
+                exception
+            );
+            throw new BusinessException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Transfer compensation is pending"
+            );
         }
     }
 
@@ -235,5 +282,23 @@ public class SagaOrchestratorService {
             transaction.getStatus(),
             transaction.getCreatedAt()
         );
+    }
+
+    private void assertIdempotentPayload(
+        TransferTransaction existingTransaction,
+        UUID senderUserId,
+        UUID receiverUserId,
+        BigDecimal amount
+    ) {
+        boolean sameSender = existingTransaction.getSenderUserId().equals(senderUserId);
+        boolean sameReceiver = existingTransaction.getReceiverUserId().equals(receiverUserId);
+        boolean sameAmount = existingTransaction.getAmount().compareTo(amount) == 0;
+
+        if (!sameSender || !sameReceiver || !sameAmount) {
+            throw new BusinessException(
+                HttpStatus.CONFLICT,
+                "Idempotency-Key was already used with different transfer data"
+            );
+        }
     }
 }

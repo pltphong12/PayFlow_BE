@@ -46,3 +46,6 @@ build/
 
 ### Cursor ###
 .cursor/
+!.cursor/rules/
+!.cursor/rules/**
+AGENTS.md

@@ -10,6 +10,8 @@ import com.payflow.transaction.repository.OutboxEventRepository;
 import com.payflow.transaction.repository.SagaStepRepository;
 import com.payflow.transaction.repository.TransferTransactionRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +24,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TransferSagaStateService {
 
     private final TransferTransactionRepository transactionRepository;
@@ -72,16 +75,22 @@ public class TransferSagaStateService {
 
     @Transactional
     public void markDebitSuccess(UUID transactionId) {
+        TransferTransaction transaction = getById(transactionId);
+        if (isTerminal(transaction)) {
+            return;
+        }
         getStep(transactionId, SagaStepName.DEBIT_SENDER).markSuccess();
     }
 
     @Transactional
     public void markDebitFailed(UUID transactionId) {
-        getStep(transactionId, SagaStepName.DEBIT_SENDER).markFailed();
-
         TransferTransaction transaction = getById(transactionId);
+        if (isTerminal(transaction)) {
+            return;
+        }
+        getStep(transactionId, SagaStepName.DEBIT_SENDER).markFailed();
         transaction.markFailed();
-        createTransferFailedOutbox(
+        createTransferFailedOutboxIfAbsent(
             transaction,
             "Sender wallet debit failed"
         );
@@ -89,26 +98,34 @@ public class TransferSagaStateService {
 
     @Transactional
     public void markCreditSuccessAndComplete(UUID transactionId) {
-        getStep(transactionId, SagaStepName.CREDIT_RECEIVER).markSuccess();
-
         TransferTransaction transaction = getById(transactionId);
+        if (isTerminal(transaction)) {
+            return;
+        }
+        getStep(transactionId, SagaStepName.CREDIT_RECEIVER).markSuccess();
         transaction.markCompleted();
-        createTransferCompletedOutbox(transaction);
+        createTransferCompletedOutboxIfAbsent(transaction);
     }
 
     @Transactional
     public void markCompensating(UUID transactionId) {
+        TransferTransaction transaction = getById(transactionId);
+        if (isTerminal(transaction)) {
+            return;
+        }
         getStep(transactionId, SagaStepName.CREDIT_RECEIVER).markFailed();
-        getById(transactionId).markCompensating();
+        transaction.markCompensating();
     }
 
     @Transactional
     public void markCompensatedAndFailed(UUID transactionId) {
-        getStep(transactionId, SagaStepName.DEBIT_SENDER).markCompensated();
-
         TransferTransaction transaction = getById(transactionId);
+        if (isTerminal(transaction)) {
+            return;
+        }
+        getStep(transactionId, SagaStepName.DEBIT_SENDER).markCompensated();
         transaction.markFailed();
-        createTransferFailedOutbox(
+        createTransferFailedOutboxIfAbsent(
             transaction,
             "Receiver wallet credit failed; sender was refunded"
         );
@@ -140,9 +157,16 @@ public class TransferSagaStateService {
             ));
     }
 
-    private void createTransferCompletedOutbox(
+    private void createTransferCompletedOutboxIfAbsent(
         TransferTransaction transaction
     ) {
+        String eventType = TransferCompleted.class.getSimpleName();
+        if (outboxEventRepository.existsByAggregateIdAndEventType(
+            transaction.getId(),
+            eventType
+        )) {
+            return;
+        }
         TransferCompleted event = new TransferCompleted(
             UUID.randomUUID(),
             transaction.getId(),
@@ -151,16 +175,20 @@ public class TransferSagaStateService {
             transaction.getAmount(),
             Instant.now()
         );
-        outboxEventRepository.save(new OutboxEvent(
-            transaction.getId(),
-            TransferCompleted.class.getSimpleName(),
-            serialize(event)
-        ));
+        saveOutboxEvent(transaction.getId(), eventType, serialize(event));
     }
-    private void createTransferFailedOutbox(
+
+    private void createTransferFailedOutboxIfAbsent(
         TransferTransaction transaction,
         String failureReason
     ) {
+        String eventType = TransferFailed.class.getSimpleName();
+        if (outboxEventRepository.existsByAggregateIdAndEventType(
+            transaction.getId(),
+            eventType
+        )) {
+            return;
+        }
         TransferFailed event = new TransferFailed(
             UUID.randomUUID(),
             transaction.getId(),
@@ -170,11 +198,32 @@ public class TransferSagaStateService {
             failureReason,
             Instant.now()
         );
-        outboxEventRepository.save(new OutboxEvent(
-            transaction.getId(),
-            TransferFailed.class.getSimpleName(),
-            serialize(event)
-        ));
+        saveOutboxEvent(transaction.getId(), eventType, serialize(event));
+    }
+
+    private void saveOutboxEvent(
+        UUID aggregateId,
+        String eventType,
+        String payload
+    ) {
+        try {
+            outboxEventRepository.save(new OutboxEvent(
+                aggregateId,
+                eventType,
+                payload
+            ));
+        } catch (DataIntegrityViolationException exception) {
+            log.info(
+                "Ignoring duplicate terminal outbox event, aggregateId={}, eventType={}",
+                aggregateId,
+                eventType
+            );
+        }
+    }
+
+    private boolean isTerminal(TransferTransaction transaction) {
+        return transaction.getStatus() == TransactionStatus.COMPLETED
+            || transaction.getStatus() == TransactionStatus.FAILED;
     }
 
     private String serialize(Object event) {

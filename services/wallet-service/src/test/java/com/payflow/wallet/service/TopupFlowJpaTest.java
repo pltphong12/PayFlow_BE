@@ -10,13 +10,11 @@ import com.payflow.wallet.repository.TopupRequestRepository;
 import com.payflow.wallet.repository.WalletRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -26,13 +24,16 @@ import java.math.BigDecimal;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@ExtendWith(SpringExtension.class)
 @SpringBootTest(
         classes = com.payflow.wallet.WalletServiceApplication.class,
         properties = {
@@ -195,5 +196,58 @@ class TopupFlowJpaTest {
                 .isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(ledgerEntryRepository.count()).isZero();
         assertThat(outboxEventRepository.count()).isZero();
+    }
+
+    @Test
+    void completeTopup_successCallbacksConcurrently_creditsWalletOnlyOnce() throws Exception {
+        UUID userId = UUID.randomUUID();
+        BigDecimal amount = new BigDecimal("100000");
+
+        walletService.createWalletIfAbsent(userId);
+        TopupRequest topupRequest = topupRequestRepository.save(
+            new TopupRequest(
+                userId,
+                amount,
+                UUID.randomUUID().toString()
+            )
+        );
+
+        CountDownLatch readyLatch = new CountDownLatch(2);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            Future<?> first = executor.submit(() ->
+                runConcurrentTopupCompletion(topupRequest.getId(), readyLatch, startLatch)
+            );
+            Future<?> second = executor.submit(() ->
+                runConcurrentTopupCompletion(topupRequest.getId(), readyLatch, startLatch)
+            );
+            readyLatch.await();
+            startLatch.countDown();
+            first.get();
+            second.get();
+        }
+
+        var wallet = walletRepository.findByUserId(userId).orElseThrow();
+        var savedTopupRequest = topupRequestRepository.findById(topupRequest.getId()).orElseThrow();
+
+        assertThat(savedTopupRequest.getStatus()).isEqualTo(TopupStatus.SUCCESS);
+        assertThat(wallet.getBalance()).isEqualByComparingTo(amount);
+        assertThat(ledgerEntryRepository.count()).isEqualTo(1);
+        assertThat(outboxEventRepository.count()).isEqualTo(1);
+    }
+
+    private void runConcurrentTopupCompletion(
+        UUID topupRequestId,
+        CountDownLatch readyLatch,
+        CountDownLatch startLatch
+    ) {
+        readyLatch.countDown();
+        try {
+            startLatch.await();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(exception);
+        }
+        topupCompletionService.completeTopup(topupRequestId, TopupStatus.SUCCESS);
     }
 }

@@ -50,4 +50,21 @@ class JwtUtilTest {
         assertThat(second).isNotBlank();
         assertThat(first).isNotEqualTo(second);
     }
+
+    @Test
+    void should_throw_unauthorized_when_access_token_is_expired() {
+        JwtUtil expiredTokenJwtUtil = new JwtUtil(new JwtProperties(
+            "test-secret-key-at-least-256-bits-long-for-hs256-algorithm",
+            -1,
+            10080
+        ));
+        String expiredToken = expiredTokenJwtUtil.generateAccessToken(
+            UUID.randomUUID(),
+            "USER"
+        );
+
+        assertThatThrownBy(() -> expiredTokenJwtUtil.parseAccessToken(expiredToken))
+            .isInstanceOf(BusinessException.class)
+            .hasMessage("Access token expired");
+    }
 }

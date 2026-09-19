@@ -4,12 +4,16 @@ import com.payflow.common.exception.BusinessException;
 import com.payflow.wallet.dto.response.LedgerEntryResponse;
 import com.payflow.wallet.dto.response.WalletResponse;
 import com.payflow.wallet.entity.LedgerEntry;
+import com.payflow.wallet.entity.ProcessedEvent;
 import com.payflow.wallet.entity.Wallet;
+import com.payflow.wallet.repository.ProcessedEventRepository;
 import com.payflow.wallet.repository.LedgerEntryRepository;
 import com.payflow.wallet.repository.WalletRepository;
+import lombok.NonNull;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -17,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
+import com.payflow.common.event.UserRegistered;
 
 @Service
 @RequiredArgsConstructor
@@ -24,15 +29,33 @@ import java.util.UUID;
 public class WalletService {
     private final WalletRepository walletRepository;
     private final LedgerEntryRepository ledgerEntryRepository;
+    private final ProcessedEventRepository processedEventRepository;
+
+    @Transactional
+    public void handleUserRegistered(@NonNull UserRegistered event) {
+        try {
+            processedEventRepository.saveAndFlush(new ProcessedEvent(event.eventId()));
+        } catch (DataIntegrityViolationException exception) {
+            log.info(
+                "Ignoring duplicate UserRegistered eventId={}",
+                event.eventId()
+            );
+            return;
+        }
+        createWalletIfAbsent(event.userId());
+    }
 
     @Transactional
     public void createWalletIfAbsent(UUID userId) {
-        if (walletRepository.existsByUserId(userId)) {
+        int inserted = walletRepository.insertWalletIfAbsent(
+            UUID.randomUUID(),
+            userId
+        );
+        if (inserted == 0) {
             log.info("Wallet already exists for userId {}", userId);
             return;
         }
-        Wallet wallet = walletRepository.save(new Wallet(userId));
-        log.info("Created wallet id {} for userId {}", wallet.getId(), userId);
+        log.info("Created wallet for userId {}", userId);
     }
 
     @Transactional(readOnly = true)

@@ -1,87 +1,67 @@
-# PayFlow — Digital Payment Platform (Backend)
+# PayFlow Backend (Fresher Edition)
 
-Dự án portfolio cá nhân mô phỏng nền tảng thanh toán số theo kiến trúc microservices
-(Saga, Outbox, Idempotency, Event-driven qua Kafka, Observability, Resilience).
+PayFlow là backend microservices cho bài toán ví điện tử/transfer, tập trung vào:
+- Saga orchestration cho transfer.
+- Transactional Outbox + Kafka publish an toàn.
+- Idempotency, optimistic locking và regression test cho race condition.
 
-Tài liệu chi tiết:
-- Business Requirement Document: [`docs/brd/BRD_PayFlow.html`](documentations/BRD_PayFlow.html)
-- Roadmap task-level từng phase: [`docs/phase/PayFlow_Roadmap.html`](documentations/PayFlow_Roadmap.html)
+## Tài liệu nguồn
 
-## Yêu cầu môi trường
+- BRD Fresher: [`documentations/v2/BRD_PayFlow_Fresher.md`](documentations/v2/BRD_PayFlow_Fresher.md)
+- Roadmap Fresher: [`documentations/v2/Roadmap_PayFlow_Fresher.md`](documentations/v2/Roadmap_PayFlow_Fresher.md)
 
-- Docker & Docker Compose v2
-- JDK 21 (chỉ cần nếu muốn build/chạy service ngoài Docker)
-- Maven 3.9+ (chỉ cần nếu muốn build/chạy service ngoài Docker)
+## Kiến trúc hiện tại
 
-## Chạy toàn bộ hệ thống (Phase 0)
+Maven multi-module:
+- `common`
+- `services/api-gateway` (`8080`)
+- `services/user-service` (`8081`)
+- `services/wallet-service` (`8082`)
+- `services/transaction-service` (`8083`)
 
-Toàn bộ hạ tầng và API Gateway chạy được chỉ với **một lệnh duy nhất**:
+Hạ tầng local qua Docker Compose:
+- PostgreSQL `5432`
+- Kafka (KRaft) `9092`
+- Kafka UI `8090`
+- Redis `6379`
+
+## Chạy local bằng Docker
 
 ```bash
 cd infrastructure
+copy .env.example .env
 docker compose up --build
 ```
 
-Lệnh trên sẽ khởi động:
+Kiểm tra nhanh:
+- Gateway health: `http://localhost:8080/actuator/health`
+- Kafka UI: `http://localhost:8090`
 
-| Container | Port (host) | Mô tả |
-|---|---|---|
-| `payflow-postgres` | 5432 | PostgreSQL 16 |
-| `payflow-kafka` | 9092 | Kafka (KRaft mode, không cần Zookeeper) |
-| `payflow-kafka-ui` | 8090 | Giao diện quan sát topic/message Kafka |
-| `payflow-redis` | 6379 | Redis (cache, TTL cho QR code, session) |
-| `payflow-api-gateway` | 8080 | Spring Cloud Gateway — entry point duy nhất |
-
-Sau khi tất cả container ở trạng thái `healthy` (kiểm tra bằng `docker compose ps`),
-xác nhận Gateway đã chạy:
-
-```bash
-curl http://localhost:8080/actuator/health
-# {"status":"UP"}
-```
-
-Kafka UI xem tại: http://localhost:8090
-
-## Dừng hệ thống
+Dừng hệ thống:
 
 ```bash
 docker compose down
 ```
 
-Thêm `-v` nếu muốn xoá luôn volume dữ liệu Postgres:
+Xóa dữ liệu local (chủ động):
 
 ```bash
 docker compose down -v
 ```
 
-## Build & test bằng Maven (không qua Docker)
+## Build và test
+
+Chạy toàn bộ reactor:
 
 ```bash
-mvn verify
+mvn -B -ntp verify
 ```
 
-CI (GitHub Actions) tự động chạy `mvn verify` trên mỗi lần push/PR vào nhánh `main`
-— xem [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+CI workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 
-## Cấu trúc thư mục
+## Lưu ý quan trọng
 
-```
-.
-├── common/                # Module dùng chung giữa các service
-├── infrastructure/        # docker-compose.yml cho toàn bộ hạ tầng local
-├── services/
-│   └── api-gateway/       # Spring Cloud Gateway — entry point duy nhất
-├── docs/
-│   ├── brd/                # Business Requirement Document
-│   └── phase/               # Roadmap chi tiết theo từng phase
-└── pom.xml                # Maven reactor gốc (multi-module)
-```
-
-## Ghi chú thiết kế (Phase 0)
-
-- Các service gọi nhau qua hostname nội bộ Docker (VD: `http://wallet-service:8081`),
-  **không dùng Eureka/Config Server** — cấu hình theo profile (`application.yml` /
-  `application-docker.yml`) là đủ ở quy mô dự án này.
-- Ở Phase 0, Gateway chưa có route nghiệp vụ nào; chỉ đảm bảo chạy được và trả `200`
-  ở `/actuator/health`. Route thật sẽ được thêm dần khi các service business ra đời
-  (User, Wallet, Transaction, ...).
+- Gateway là entry point public duy nhất.
+- Internal Wallet API (`/api/v1/wallets/internal/**`) không route qua Gateway.
+- Mỗi service sở hữu database riêng; không query/join chéo DB.
+- Không commit `.env`, `application-local.yml`, hoặc artifact trong `target/`.

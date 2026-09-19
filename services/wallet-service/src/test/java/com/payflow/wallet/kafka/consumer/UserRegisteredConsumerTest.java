@@ -20,7 +20,7 @@ class UserRegisteredConsumerTest {
     WalletService walletService;
 
     @Test
-    void onUserRegistered_callsWalletServiceCreateWallet() {
+    void onUserRegistered_callsWalletServiceHandler() {
         UserRegisteredConsumer consumer = new UserRegisteredConsumer(walletService);
 
         UUID userId = UUID.randomUUID();
@@ -34,7 +34,7 @@ class UserRegisteredConsumerTest {
 
         consumer.onUserRegistered(event);
 
-        verify(walletService, times(1)).createWalletIfAbsent(userId);
+        verify(walletService, times(1)).handleUserRegistered(event);
     }
 }
 

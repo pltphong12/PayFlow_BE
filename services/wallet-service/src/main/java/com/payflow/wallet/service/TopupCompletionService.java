@@ -11,9 +11,10 @@ import com.payflow.wallet.repository.TopupRequestRepository;
 import com.payflow.wallet.repository.WalletRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -22,22 +23,48 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Slf4j
 public class TopupCompletionService {
+    private static final int MAX_RETRIES = 3;
 
     private final TopupRequestRepository topupRequestRepository;
     private final WalletRepository walletRepository;
     private final LedgerEntryRepository ledgerEntryRepository;
     private final OutboxEventRepository outboxEventRepository;
     private final ObjectMapper objectMapper;
+    private final TransactionTemplate transactionTemplate;
 
-    @Transactional
     public void completeTopup(UUID topupRequestId, TopupStatus gatewayResult) {
+        for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                transactionTemplate.executeWithoutResult(
+                    ignored -> completeTopupInTransaction(topupRequestId, gatewayResult)
+                );
+                return;
+            } catch (OptimisticLockingFailureException exception) {
+                if (attempt == MAX_RETRIES) {
+                    throw new BusinessException(
+                        HttpStatus.CONFLICT,
+                        "Wallet balance changed concurrently. Please retry."
+                    );
+                }
+                log.info(
+                    "Retrying topup completion after optimistic-lock conflict, topupRequestId={}, attempt={}",
+                    topupRequestId,
+                    attempt + 1
+                );
+            }
+        }
+    }
+
+    private void completeTopupInTransaction(
+        UUID topupRequestId,
+        TopupStatus gatewayResult
+    ) {
         TopupRequest topupRequest = topupRequestRepository
             .findById(topupRequestId)
             .orElseThrow(() -> new BusinessException(
                 HttpStatus.NOT_FOUND,
                 "Topup request not found"
             ));
-        // Check if topup in db that have id equal current id, it will return (Idempotency)
         if (topupRequest.getStatus() != TopupStatus.PENDING) {
             log.info(
                 "Ignoring duplicate gateway result for topupRequestId={}",
@@ -50,7 +77,7 @@ public class TopupCompletionService {
             log.info("Topup failed, topupRequestId={}", topupRequestId);
             return;
         }
-        // Looking for wallet and add amount into wallet
+
         Wallet wallet = walletRepository
             .findByUserId(topupRequest.getUserId())
             .orElseThrow(() -> new BusinessException(
@@ -58,17 +85,16 @@ public class TopupCompletionService {
                 "Wallet not found"
             ));
         wallet.credit(topupRequest.getAmount());
-        // Create ledger in order to view when we need, it will be useful for reporting and auditing
-        LedgerEntry ledgerEntry = new LedgerEntry(
+        walletRepository.flush();
+
+        ledgerEntryRepository.save(new LedgerEntry(
             wallet,
             topupRequest.getId(),
             LedgerEntryType.CREDIT,
             topupRequest.getAmount(),
             wallet.getBalance()
-        );
-        ledgerEntryRepository.save(ledgerEntry);
+        ));
 
-        // Create kafka-event and save outbox
         UUID eventId = UUID.randomUUID();
         Instant occurredAt = Instant.now();
         WalletCredited event = new WalletCredited(
@@ -79,13 +105,12 @@ public class TopupCompletionService {
             topupRequest.getAmount(),
             occurredAt
         );
-        OutboxEvent outboxEvent = new OutboxEvent(
+        outboxEventRepository.save(new OutboxEvent(
             eventId,
             topupRequest.getId(),
             WalletCredited.class.getSimpleName(),
             serialize(event)
-        );
-        outboxEventRepository.save(outboxEvent);
+        ));
         topupRequest.markSuccess();
         log.info(
             "Topup completed successfully, topupRequestId={}, walletId={}, amount={}",

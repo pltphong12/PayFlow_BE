@@ -20,7 +20,7 @@ import com.payflow.user.entity.RefreshToken;
 import com.payflow.user.entity.User;
 import com.payflow.user.entity.UserRole;
 import com.payflow.user.entity.UserStatus;
-import com.payflow.user.kafka.producer.UserEventProducer;
+import com.payflow.user.outbox.UserRegistrationOutboxService;
 import com.payflow.user.repository.RefreshTokenRepository;
 import com.payflow.user.repository.UserRepository;
 
@@ -29,7 +29,7 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 public class AuthService {
-    private final UserEventProducer userEventProducer;
+    private final UserRegistrationOutboxService userRegistrationOutboxService;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final TokenHashService tokenHashService;
@@ -51,7 +51,7 @@ public class AuthService {
                 UserStatus.ACTIVE);
         User saved = userRepository.save(user);
 
-        userEventProducer.publishUserRegistered(new UserRegistered(
+        userRegistrationOutboxService.enqueueUserRegistered(new UserRegistered(
             UUID.randomUUID(), 
             saved.getId(), 
             saved.getEmail(), 
