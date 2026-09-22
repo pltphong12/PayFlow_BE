@@ -7,6 +7,7 @@ COPY services/wallet-service ./services/wallet-service
 COPY services/user-service/pom.xml ./services/user-service/pom.xml
 COPY services/api-gateway/pom.xml ./services/api-gateway/pom.xml
 COPY services/transaction-service/pom.xml ./services/transaction-service/pom.xml
+COPY services/merchant-service/pom.xml ./services/merchant-service/pom.xml
 
 RUN mvn -q -pl services/wallet-service -am -DskipTests package
 

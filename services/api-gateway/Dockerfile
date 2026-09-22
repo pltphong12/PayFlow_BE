@@ -10,6 +10,7 @@ COPY services/api-gateway ./services/api-gateway
 COPY services/user-service/pom.xml ./services/user-service/pom.xml
 COPY services/wallet-service/pom.xml ./services/wallet-service/pom.xml
 COPY services/transaction-service/pom.xml ./services/transaction-service/pom.xml
+COPY services/merchant-service/pom.xml ./services/merchant-service/pom.xml
 
 # Build riêng module api-gateway kèm theo module common mà nó phụ thuộc (-am), bỏ qua test để build image nhanh hơn (test đã chạy ở bước CI riêng)
 RUN mvn -q -pl services/api-gateway -am -DskipTests package

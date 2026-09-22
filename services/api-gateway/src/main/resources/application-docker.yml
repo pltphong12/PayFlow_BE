@@ -4,5 +4,6 @@
 USER_SERVICE_URI: http://user-service:8081
 WALLET_SERVICE_URI: http://wallet-service:8082
 TRANSACTION_SERVICE_URI: http://transaction-service:8083
+MERCHANT_SERVICE_URI: http://merchant-service:8084
 
 management.endpoint.health.show-details: always

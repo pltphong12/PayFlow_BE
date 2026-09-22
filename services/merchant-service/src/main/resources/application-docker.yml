@@ -1,0 +1,10 @@
+POSTGRES_HOST: postgres
+POSTGRES_PORT: 5432
+POSTGRES_DB: payflow_merchant_db
+
+REDIS_HOST: redis
+REDIS_PORT: 6379
+
+TRANSACTION_SERVICE_URI: http://transaction-service:8083
+
+management.endpoint.health.show-details: always

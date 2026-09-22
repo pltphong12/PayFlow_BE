@@ -73,5 +73,6 @@
         <module>services/user-service</module>
         <module>services/wallet-service</module>
         <module>services/transaction-service</module>
+        <module>services/merchant-service</module>
     </modules>
 </project>

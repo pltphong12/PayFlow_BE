@@ -36,7 +36,10 @@ spring:
               uri: ${TRANSACTION_SERVICE_URI}
               predicates:
                 - Path=/api/v1/transfers,/api/v1/transfers/**
-
+            - id: merchant-service
+              uri: ${MERCHANT_SERVICE_URI}
+              predicates:
+                - Path=/api/v1/merchants/**,/api/v1/admin/merchants/**,/api/v1/qr/**,/api/v1/notifications/**
           globalcors:
             add-to-simple-url-handler-mapping: true
             cors-configurations:
