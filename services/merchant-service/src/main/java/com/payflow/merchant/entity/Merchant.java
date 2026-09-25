@@ -8,6 +8,10 @@ import lombok.NoArgsConstructor;
 import java.time.Instant;
 import java.util.UUID;
 
+import org.springframework.http.HttpStatus;
+
+import com.payflow.common.exception.BusinessException;
+
 @Entity
 @Table(name = "merchants")
 @Getter
@@ -58,6 +62,37 @@ public class Merchant {
         this.bankAccountNumber = bankAccountNumber;
         this.bankName = bankName;
         this.status = MerchantStatus.PENDING_APPROVAL;
+    }
+
+    public void approve() {
+        ensurePendingApproval();
+
+        this.status = MerchantStatus.APPROVED;
+        this.approvedAt = Instant.now();
+        this.rejectedReason = null;
+    }
+
+    public void reject(String rejectedReason) {
+        ensurePendingApproval();
+
+        if (rejectedReason == null || rejectedReason.isBlank()) {
+            throw new BusinessException(
+                HttpStatus.BAD_REQUEST,
+                "Reject reason is required"
+            );
+        }
+        this.status = MerchantStatus.REJECTED;
+        this.approvedAt = null;
+        this.rejectedReason = rejectedReason.trim();
+    }
+
+    private void ensurePendingApproval() {
+        if (status != MerchantStatus.PENDING_APPROVAL) {
+            throw new BusinessException(
+                HttpStatus.CONFLICT,
+                "Merchant is no longer pending approval"
+            );
+        }
     }
 
     @PrePersist
